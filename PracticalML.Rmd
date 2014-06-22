@@ -1,0 +1,136 @@
+---
+title: "Coursera- Practical Machine Learning"
+author: "Yuting WANG"
+date: "June 22, 2014"
+output: html_document
+---
+
+------
+##1. Data Explore
+```{r cache=TRUE}
+train = read.csv('pml-training.csv', header = T)
+test = read.csv('pml-testing.csv', header = T)
+```
+After loading the training and testing data, we can see there are many NAs in those dataframes. 
+
+I used a randomForest model to first check the importance of each feature. 
+
+Train data set is used. To simplify the problem, I only used complete cases. 
+```{r}
+comp.df = na.omit(train)
+```
+Before applying the model, I removed some of the less related features, including time feature, features that contain 'DIV' and 'user_name' feature.  
+```{r}
+name.time <- grep('time', names(comp.df))
+#Remove features with time information
+comp.df = comp.df[, -c(name.time)]
+comp.df = comp.df[, 3:ncol(comp.df)]
+rm = 0
+for(i in 1:ncol(comp.df)){
+        if(length(grep('DIV', comp.df[,i])) > 0)
+                rm = c(rm, i)
+}
+rm = rm[-1]
+#Remove features that contain 'DIV'
+comp.df <- comp.df[,-rm]
+```
+
+**Use RandomForest to see the importance of features**
+```{r message=FALSE}
+library(randomForest)
+rf <- randomForest(classe ~., data = comp.df)
+varImpPlot(rf)
+most.imp <- rf$importance[order(rf$importance,decreasing = T),][1:25]
+imp.var <- row.names(data.frame(most.imp))
+```
+
+We can see the most important features here. I saved the column names of the first most important features in imp.var variable for furute model building purpose. 
+
+**Testing set basic exam**
+
+There are many columns that only contain NAs. First I removed them since there is no information in those columns. 
+```{r}
+null.col = 0
+for(i in 1:ncol(test)){
+        if(length(which(is.na(test[,i]))) == nrow(test)){
+                null.col <- c(null.col, i)
+        }
+}
+
+null.col <- null.col[-1]
+testset <- test[, -null.col]
+```
+
+Then remove time features and name features
+
+```{r}
+testset = testset[, -c(name.time)]
+testset <- testset[, 3:ncol(testset)]
+```
+
+```{r}
+ncol(testset)
+nrow(testset)
+```
+
+Now I checked now many features remains in test set are also in the most important features generated above: 
+```{r}
+imp <- names(testset)[which(names(testset) %in% imp.var)]
+imp
+```
+
+These are the features I will use in building the predicting model. 
+##2. Prective model 
+
+**Build and valid the model through Cross Validation 
+```{r cache=TRUE}
+#Extract the desired features
+training <- train[imp]
+training$classe <- train$classe
+```
+Using 'randomForest' package
+*Random Forest algorithm
+*10-fold Cross Validation 
+```{r}
+rf_3 <- randomForest(classe ~ ., data = training)
+rf_3
+```
+We see here the out of bag error rate is very low. 
+
+Use cross validation: 
+```{r}
+set.seed(0)
+rf.cv <- rfcv(training[, 1:8], training[,9], cv.fold = 5)
+rf.cv$error.cv
+```
+
+The result of cross validation is very promissing. Thus the model is valid. 
+
+**Applly model to testing sets**
+
+First, removed the unused features in the test set
+```{r}
+testing <- test[imp]
+```
+
+Then apply the model
+```{r}
+pred <- predict(rf_3, testing)
+```
+
+Create the answers
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(pred)
+```
+
+
+
+
+
